@@ -4,7 +4,11 @@ import threading
 import time
 import sys
 
-sys.path.append(f"{os.path.expanduser( '~' )}/DeepLearningExamples/PyTorch/LanguageModeling/Transformer-XL/pytorch")
+def add_to_path(path):
+    assert os.path.exists(path)
+    sys.path.append(path)
+
+add_to_path(f"{os.path.expanduser( '~' )}/DeepLearningExamples/PyTorch/LanguageModeling/Transformer-XL/pytorch")
 
 from mem_transformer import MemTransformerLM
 import lamb

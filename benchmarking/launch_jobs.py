@@ -8,12 +8,17 @@ import sys
 from torchvision import models
 import torch
 
+def add_to_path(path):
+    assert os.path.exists(path)
+    sys.path.append(path)
+
 home_directory = os.path.expanduser( '~' )
-sys.path.append(f"{home_directory}/DeepLearningExamples/PyTorch/LanguageModeling/Transformer-XL/pytorch")
-sys.path.append(f"{home_directory}/DeepLearningExamples/PyTorch/LanguageModeling/Transformer-XL/pytorch/utils")
+add_to_path(f"{home_directory}/DeepLearningExamples/PyTorch/LanguageModeling/Transformer-XL/pytorch")
+add_to_path(f"{home_directory}/DeepLearningExamples/PyTorch/LanguageModeling/Transformer-XL/pytorch/utils")
+
 from benchmark_suite.transformer_trainer import transformer_loop
-sys.path.append(f"{home_directory}/DeepLearningExamples/PyTorch/LanguageModeling/BERT")
-from bert_trainer_mock import bert_loop
+add_to_path(f"{home_directory}/DeepLearningExamples/PyTorch/LanguageModeling/BERT")
+from bert_trainer import bert_loop
 
 from benchmark_suite.train_imagenet import imagenet_loop
 from benchmark_suite.toy_models.bnorm_trainer import bnorm_loop

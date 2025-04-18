@@ -119,7 +119,7 @@ def load_tf_weights_in_bert(model, tf_checkpoint_path):
     return model
 
 def gelu(x):
-    return torch.nn.functional.gelu(x, approximate=True)
+    return torch.nn.functional.gelu(x, approximate='tanh')
 
 def swish(x):
     return x * torch.sigmoid(x)
@@ -352,6 +352,7 @@ class BertSelfAttention(nn.Module):
 
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.bmm(query_layer, key_layer)
+        
         # (bsz, heads, seq, seq)
         attention_scores = attention_scores.view(batch_size,
                                                  self.num_attention_heads,
@@ -883,7 +884,7 @@ class BertModel(BertPreTrainedModel):
             encoded_layers = encoded_layers[-1:]
         if not self.teacher:
             return encoded_layers, pooled_output
-
+    
     def make_teacher(self, ):
         self.teacher = True
 
@@ -1357,7 +1358,14 @@ class BertForQuestionAnswering(BertPreTrainedModel):
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids, attention_mask):
+        
+        #self.bert(input_ids, token_type_ids, attention_mask)
         encoded_layers, _ = self.bert(input_ids, token_type_ids, attention_mask)
+        
+        #print("input_ids: ", input_ids, input_ids.shape, input_ids.dtype)
+        #print("token_type_ids: ", token_type_ids, token_type_ids.shape, token_type_ids.dtype) 
+        #print("attention_mask: ", attention_mask, attention_mask.shape, attention_mask.dtype) 
+
         if not self.distillation or self.distill_config["use_pred_states"]:
             sequence_output = encoded_layers[-1]
             logits = self.qa_outputs(sequence_output)

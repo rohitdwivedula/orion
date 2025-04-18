@@ -220,14 +220,18 @@ class ResidualRecurrentDecoder(nn.Module):
         enc_context, enc_len, hidden = context
         hidden = self.init_hidden(hidden)
 
+
         x = self.embedder(inputs)
+        #print("pl 1: ", x)
 
         x, h, attn, scores = self.att_rnn(x, hidden[0], enc_context, enc_len)
+        #print("pl 2: ", x)
         self.append_hidden(h)
 
         x = torch.cat((x, attn), dim=2)
         x = self.dropout(x)
         x, h = self.rnn_layers[0](x, hidden[1])
+        #print("pl 3: ", x)
         self.append_hidden(h)
 
         for i in range(1, len(self.rnn_layers)):

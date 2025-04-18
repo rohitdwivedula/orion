@@ -455,6 +455,8 @@ def main():
         )
 
     vocab_size = tokenizer.vocab_size
+    print(f"---------------------- VOCAB SIZE IS {vocab_size}")
+
 
     # build GNMT model
     model_config = {'hidden_size': args.hidden_size,
@@ -579,8 +581,8 @@ def main():
         train_loader.sampler.set_epoch(epoch)
 
         trainer.epoch = epoch
-        train_loss, train_perf = trainer.optimize(train_loader)
-        training_perf.append(train_perf)
+        #train_loss, train_perf = trainer.optimize(train_loader)
+        #training_perf.append(train_perf)
 
         # evaluate on validation set
         if args.eval:

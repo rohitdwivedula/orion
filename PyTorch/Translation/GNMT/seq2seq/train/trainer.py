@@ -28,12 +28,12 @@ import numpy as np
 import torch
 import torch.optim
 import torch.utils.data
-from apex.parallel import DistributedDataParallel
-from apex import amp
+#from apex.parallel import DistributedDataParallel
+#from apex import amp
 
-from seq2seq.train.fp_optimizers import FP16Optimizer
+#from seq2seq.train.fp_optimizers import FP16Optimizer
 from seq2seq.train.fp_optimizers import FP32Optimizer
-from seq2seq.train.fp_optimizers import AMPOptimizer
+#from seq2seq.train.fp_optimizers import AMPOptimizer
 from seq2seq.train.lr_scheduler import WarmupMultiStepLR
 from seq2seq.utils import AverageMeter
 from seq2seq.utils import sync_workers
@@ -118,6 +118,7 @@ class Seq2SeqTrainer:
 
         params = self.model.parameters()
 
+        '''
         if math == 'manual_fp16':
             self.fp_optimizer = FP16Optimizer(
                 self.model, grad_clip,
@@ -125,7 +126,8 @@ class Seq2SeqTrainer:
                 dls_upscale_interval=loss_scaling['upscale_interval']
                 )
             params = self.fp_optimizer.fp32_params
-        elif math == 'fp32' or math == 'tf32':
+        '''
+        if math == 'fp32' or math == 'tf32':
             self.fp_optimizer = FP32Optimizer(self.model, grad_clip)
 
         opt_name = opt_config.pop('optimizer')
@@ -135,6 +137,7 @@ class Seq2SeqTrainer:
         self.scheduler = WarmupMultiStepLR(self.optimizer, train_iterations,
                                            **scheduler_config)
 
+        '''
         if math == 'fp16':
             self.model, self.optimizer = amp.initialize(
                 self.model,
@@ -149,9 +152,10 @@ class Seq2SeqTrainer:
                 loss_scale=loss_scaling['init_scale'],
                 dls_upscale_interval=loss_scaling['upscale_interval']
                 )
+        '''
 
-        if self.distributed:
-            self.model = DistributedDataParallel(self.model)
+        #if self.distributed:
+        #    self.model = DistributedDataParallel(self.model)
 
     def iterate(self, src, tgt, update=True, training=True):
         """
@@ -171,6 +175,8 @@ class Seq2SeqTrainer:
         num_toks = {}
         num_toks['tgt'] = int(sum(tgt_length - 1))
         num_toks['src'] = int(sum(src_length))
+
+        #print(src.size(), src, src_length)
 
         if self.batch_first:
             output = self.model(src, src_length, tgt[:, :-1])
@@ -234,8 +240,11 @@ class Seq2SeqTrainer:
             if i % self.iter_size == self.iter_size - 1:
                 update = True
 
+            print(f"------------ do iteration {i}")
+
             # do a train/evaluate iteration
             stats = self.iterate(src, tgt, update, training=training)
+            
             loss_per_token, loss_per_sentence, num_toks = stats
 
             # measure accuracy and record loss
@@ -308,6 +317,8 @@ class Seq2SeqTrainer:
 
         tot_tok_time.reduce('sum')
         losses_per_token.reduce('mean')
+
+        
 
         return losses_per_token.avg, tot_tok_time.avg
 

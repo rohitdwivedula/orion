@@ -41,7 +41,7 @@ from file_utils import PYTORCH_PRETRAINED_BERT_CACHE
 import modeling
 from optimization import BertAdam, warmup_linear
 from tokenization import (BasicTokenizer, BertTokenizer, whitespace_tokenize)
-from utils import is_main_process, format_step
+from bert_utils import is_main_process, format_step
 import dllogger, time
 
 torch._C._jit_set_profiling_mode(False)
@@ -737,7 +737,6 @@ def main():
     parser.add_argument("--init_checkpoint",
                         default=None,
                         type=str,
-                        required=False,
                         help="The checkpoint file from pretraining")
 
     ## Other parameters
@@ -816,7 +815,6 @@ def main():
     parser.add_argument("--config_file",
                         default=None,
                         type=str,
-                        required=True,
                         help="The BERT model config")
     parser.add_argument('--log_freq',
                         type=int, default=50,
@@ -875,7 +873,7 @@ def main():
                                 dllogger.StdOutBackend(verbosity=dllogger.Verbosity.VERBOSE, step_format=format_step)])
     else:
         dllogger.init(backends=[])
-    
+
     dllogger.metadata("e2e_train_time", {"unit": "s"})
     dllogger.metadata("training_sequences_per_second", {"unit": "sequences/s"})
     dllogger.metadata("final_loss", {"unit": None})
@@ -934,12 +932,26 @@ def main():
             num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
     # Prepare model
-    config = modeling.BertConfig.from_json_file(args.config_file)
+
+    config = {
+        "attention_probs_dropout_prob": 0.1,
+        "hidden_act": "gelu",
+        "hidden_dropout_prob": 0.1,
+        "hidden_size": 768,
+        "initializer_range": 0.02,
+        "intermediate_size": 3072,
+        "max_position_embeddings": 512,
+        "num_attention_heads": 12,
+        "num_hidden_layers": 12,
+        "type_vocab_size": 2,
+        "vocab_size": 30522
+    }
+
+    config = modeling.BertConfig.from_dict(config)
     # Padding for divisibility by 8
     if config.vocab_size % 8 != 0:
         config.vocab_size += 8 - (config.vocab_size % 8)
 
-    print("config is: ", config)
     model = modeling.BertForQuestionAnswering(config)
     # model = modeling.BertForQuestionAnswering.from_pretrained(args.bert_model,
                 # cache_dir=os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE), 'distributed_{}'.format(args.local_rank)))
@@ -947,7 +959,7 @@ def main():
     #checkpoint = torch.load(args.init_checkpoint, map_location='cpu')
     #checkpoint = checkpoint["model"] if "model" in checkpoint.keys() else checkpoint
     #model.load_state_dict(checkpoint, strict=False)
-    dllogger.log(step="PARAMETER", data={"loaded_checkpoint": True})
+    #dllogger.log(step="PARAMETER", data={"loaded_checkpoint": True})
     model.to(device)
     num_weights = sum([p.numel() for p in model.parameters() if p.requires_grad])
     dllogger.log(step="PARAMETER", data={"model_weights_num":num_weights})
@@ -964,12 +976,7 @@ def main():
         {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
         {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
-
-    print("Model initialized!")
-
     if args.do_train:
-        optimizer = BertAdam(optimizer_grouped_parameters,lr=args.learning_rate,warmup=args.warmup_proportion,t_total=num_train_optimization_steps)
-        '''
         if args.fp16:
             try:
                 from apex.optimizers import FusedAdam
@@ -988,8 +995,11 @@ def main():
             if args.do_train:
                 scheduler = LinearWarmUpScheduler(optimizer, warmup=args.warmup_proportion, total_steps=num_train_optimization_steps)
 
-            else:
-        '''
+        else:
+            optimizer = BertAdam(optimizer_grouped_parameters,
+                                    lr=args.learning_rate,
+                                    warmup=args.warmup_proportion,
+                                    t_total=num_train_optimization_steps)
 
     if args.local_rank != -1:
         try:
@@ -1050,40 +1060,33 @@ def main():
             train_sampler = DistributedSampler(train_data)
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size * n_gpu)
 
-        print("Data Loaders configured")
-
-        model.eval()
+        model.train()
         #gradClipper = GradientClipper(max_grad_norm=1.0)
         final_loss = None
 
         train_start = time.time()
-
-        input_ids = torch.ones((8, 384)).to(torch.int64).to(0)
-        segment_ids = torch.ones((8, 384)).to(torch.int64).to(0)  
-        input_mask = torch.ones((8, 384)).to(torch.int64).to(0)  
-
         for epoch in range(int(args.num_train_epochs)):
-            #train_iter = tqdm(train_dataloader, desc="Iteration", disable=args.disable_progress_bar) if is_main_process() else train_dataloader
-            for step in range(100):  #batch in enumerate(train_iter):
+            train_iter = tqdm(train_dataloader, desc="Iteration", disable=args.disable_progress_bar) if is_main_process() else train_dataloader
+            for step, batch in enumerate(train_iter):
                 # Terminate early for benchmarking
 
-                print(f"Start with step {step}")
-
+                print(f"Do step {step}")
                 if args.max_steps > 0 and global_step > args.max_steps:
                     break
 
-                #if n_gpu == 1:
-                #    batch = tuple(t.to(device) for t in batch)  # multi-gpu does scattering it-self
-                #input_ids, input_mask, segment_ids, start_positions, end_positions = batch
-                with torch.no_grad():
-                    start_logits, end_logits = model(input_ids, segment_ids, input_mask)
+                if step==20:
+                    torch.cuda.profiler.cudart().cudaProfilerStart()
+                
+                if n_gpu == 1:
+                    batch = tuple(t.to(device) for t in batch)  # multi-gpu does scattering it-self
+                input_ids, input_mask, segment_ids, start_positions, end_positions = batch
+                start_logits, end_logits = model(input_ids, segment_ids, input_mask)
                 # If we are on multi-GPU, split add a dimension
-                #if len(start_positions.size()) > 1:
-                #    start_positions = start_positions.squeeze(-1)
-                #if len(end_positions.size()) > 1:
-                #    end_positions = end_positions.squeeze(-1)
+                if len(start_positions.size()) > 1:
+                    start_positions = start_positions.squeeze(-1)
+                if len(end_positions.size()) > 1:
+                    end_positions = end_positions.squeeze(-1)
                 # sometimes the start/end positions are outside our model inputs, we ignore these terms
-                '''
                 ignored_index = start_logits.size(1)
                 start_positions.clamp_(0, ignored_index)
                 end_positions.clamp_(0, ignored_index)
@@ -1096,11 +1099,11 @@ def main():
                     loss = loss.mean()  # mean() to average on multi-gpu.
                 if args.gradient_accumulation_steps > 1:
                     loss = loss / args.gradient_accumulation_steps
-                #if args.fp16:
-                #    with amp.scale_loss(loss, optimizer) as scaled_loss:
-                #        scaled_loss.backward()
-                #else:
-                loss.backward()
+                if args.fp16:
+                    with amp.scale_loss(loss, optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
 
                 # gradient clipping
                 #gradClipper.step(amp.master_params(optimizer))
@@ -1117,8 +1120,6 @@ def main():
                 if step % args.log_freq == 0:
                     dllogger.log(step=(epoch, global_step,), data={"step_loss": final_loss,
                                                                 "learning_rate": optimizer.param_groups[0]['lr']})
-                '''
-        
         time_to_train = time.time() - train_start
 
     if args.do_train and is_main_process() and not args.skip_checkpoint:

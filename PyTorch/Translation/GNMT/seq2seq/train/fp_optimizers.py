@@ -23,10 +23,10 @@ import math
 
 import torch
 from torch.nn.utils import clip_grad_norm_
-import apex.amp._amp_state
-from apex import amp
+#import apex.amp._amp_state
+#from apex import amp
 
-
+'''
 class FP16Optimizer:
     """
     Mixed precision optimizer with dynamic loss scaling and backoff.
@@ -143,7 +143,7 @@ class FP16Optimizer:
                 self.since_last_invalid = 0
 
             self.model.zero_grad()
-
+'''
 
 class FP32Optimizer:
     """
@@ -186,7 +186,7 @@ class FP32Optimizer:
             optimizer.step()
             self.model.zero_grad()
 
-
+'''
 class AMPOptimizer:
     """
     Optimizer compatible with AMP.
@@ -236,3 +236,4 @@ class AMPOptimizer:
             scheduler.step()
             optimizer.step()
             self.model.zero_grad()
+'''

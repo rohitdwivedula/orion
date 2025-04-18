@@ -82,8 +82,8 @@ class ResidualRecurrentEncoder(nn.Module):
             self.embedder = nn.Embedding(vocab_size, hidden_size,
                                          padding_idx=config.PAD)
             nn.init.uniform_(self.embedder.weight.data, -init_weight,
-                             init_weight)
-
+                          init_weight)
+    
     def forward(self, inputs, lengths):
         """
         Execute the encoder.
@@ -97,15 +97,17 @@ class ResidualRecurrentEncoder(nn.Module):
 
         # bidirectional layer
         x = self.dropout(x)
+        
         x = pack_padded_sequence(x, lengths.cpu().numpy(),
                                  batch_first=self.batch_first)
+        
         x, _ = self.rnn_layers[0](x)
         x, _ = pad_packed_sequence(x, batch_first=self.batch_first)
 
         # 1st unidirectional layer
         x = self.dropout(x)
         x, _ = self.rnn_layers[1](x)
-
+        
         # the rest of unidirectional layers,
         # with residual connections starting from 3rd layer
         for i in range(2, len(self.rnn_layers)):
@@ -113,5 +115,4 @@ class ResidualRecurrentEncoder(nn.Module):
             x = self.dropout(x)
             x, _ = self.rnn_layers[i](x)
             x = x + residual
-
         return x
